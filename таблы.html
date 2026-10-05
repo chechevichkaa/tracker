@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<title>Трекер лечения</title>
+<style>
+*{box-sizing:border-box}
+:root{--bg:#f6f6f8;--card:#fff;--text:#17171a;--muted:#7a7a83;--line:#e5e5ea;--accent:#6957f5;--ok:#20a05a}
+body{margin:0;background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,"SF Pro Display","Segoe UI",sans-serif}
+main{max-width:760px;margin:auto;padding:22px 16px 48px}
+h1{font-size:31px;line-height:1.1;margin:0 0 5px;font-weight:800}
+.subtitle{color:var(--muted);font-size:16px;margin-bottom:20px}
+.datebox{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:12px;display:flex;align-items:center;gap:8px;margin-bottom:13px}
+.datebox button{border:0;background:#f0f0f4;border-radius:13px;min-width:44px;height:44px;font-size:24px}
+.datebox input{flex:1;border:0;background:transparent;text-align:center;font-size:17px;font-weight:700;min-width:0}
+.today{background:var(--accent)!important;color:#fff;font-size:15px!important;font-weight:700;padding:0 14px}
+.summary{background:var(--card);border:1px solid var(--line);border-radius:20px;padding:16px;margin-bottom:20px}
+.summaryline{display:flex;justify-content:space-between;align-items:center}
+.summaryline b{font-size:20px}.percent{color:var(--muted);font-size:14px}
+.bar{height:10px;background:#ececf1;border-radius:99px;overflow:hidden;margin-top:12px}.fill{height:100%;background:var(--ok);width:0;transition:.2s}
+.group-title{font-size:13px;font-weight:800;color:var(--muted);letter-spacing:.08em;margin:22px 4px 9px;text-transform:uppercase}
+.card{background:var(--card);border:1px solid var(--line);border-radius:19px;padding:14px;margin-bottom:9px}
+.row{display:flex;align-items:center;gap:12px}
+.check{appearance:none;width:27px;height:27px;border:2px solid #c9c9d0;border-radius:50%;margin:0;flex:0 0 27px}
+.check:checked{background:var(--ok);border-color:var(--ok);position:relative}
+.check:checked:after{content:"✓";color:white;font-weight:800;position:absolute;left:5px;top:1px;font-size:17px}
+.name{font-weight:780;font-size:17px}.dose{font-size:14px;color:var(--muted);margin-top:3px}
+.meta{margin:10px 0 0 39px;color:var(--muted);font-size:13px}
+.pill{display:inline-block;background:#f0efff;color:#5646d7;border-radius:9px;padding:4px 8px;margin-right:5px;margin-bottom:4px}
+.notes{margin-top:22px}.notes textarea{width:100%;min-height:100px;border:1px solid var(--line);border-radius:16px;padding:13px;font:16px inherit;resize:vertical;background:white}
+.history{display:grid;grid-template-columns:repeat(7,1fr);gap:6px;margin-top:8px}
+.day{background:#fff;border:1px solid var(--line);border-radius:12px;padding:7px 2px;text-align:center;font-size:11px;color:var(--muted)}
+.day strong{display:block;font-size:15px;color:var(--text);margin-top:3px}.day.complete strong{color:var(--ok)}
+.info{margin-top:22px;color:var(--muted);font-size:12px;line-height:1.5}
+.empty{background:#fff;border:1px dashed var(--line);border-radius:18px;padding:20px;color:var(--muted)}
+</style>
+</head>
+<body>
+<main>
+<h1>💊 Трекер лечения</h1>
+<div class="subtitle">Отмечай каждый фактический приём. История сохраняется на этом устройстве.</div>
+
+<div class="datebox">
+<button onclick="moveDay(-1)" aria-label="предыдущий день">‹</button>
+<input id="date" type="date" onchange="render()">
+<button onclick="moveDay(1)" aria-label="следующий день">›</button>
+<button class="today" onclick="setToday()">Сегодня</button>
+</div>
+
+<div class="summary">
+<div class="summaryline"><b id="summary">0 из 0</b><span class="percent" id="percent">0%</span></div>
+<div class="bar"><div class="fill" id="fill"></div></div>
+</div>
+
+<div id="app"></div>
+
+<div class="notes">
+<div class="group-title">Заметки за день</div>
+<textarea id="notes" placeholder="Самочувствие, симптомы, пропущенный приём и т.п." oninput="saveNotes()"></textarea>
+</div>
+
+<div class="group-title">Последние 7 дней</div>
+<div class="history" id="history"></div>
+
+<div class="info">
+Данные хранятся локально в браузере. Трекер только фиксирует приём и не заменяет назначение врача.
+Названия, дозировки и схема должны совпадать с твоей выпиской/рецептом.
+</div>
+</main>
+
+<script>
+const meds=[
+ {id:"amox",group:"Регулярный приём",name:"Amoxicillin",dose:"1000 mg",times:["Утро","Вечер"],note:"после еды"},
+ {id:"dom",group:"Регулярный приём",name:"Domitazol VNB",dose:"2 таблетки",times:["Утро","Вечер"]},
+ {id:"levo",group:"Регулярный приём",name:"Levofloxacin / Volexin",dose:"500 mg",times:["Утро","Вечер"],note:"после еды"},
+ {id:"alpha",group:"Регулярный приём",name:"Alphachymotrypsine / USATRYPSIN",dose:"4,2 mg · 2 таблетки",times:["Утро","Вечер"]},
+ {id:"para",group:"Регулярный приём",name:"Paracetamol / Partamol",dose:"500 mg",times:["Утро","Вечер"],note:"после еды"},
+ {id:"fenti",group:"Курсовые препараты",name:"Fenticonazol / Fentizol",dose:"200 mg · 1 вагинальная таблетка",times:["Вечер"],rule:"через день · 3 введения"},
+ {id:"fluco",group:"Курсовые препараты",name:"Fluconazol",dose:"150 mg",times:["Вечер"],rule:"5 окт: 2 капсулы; 6–7 окт: по 1"},
+ {id:"mango",group:"Наружно",name:"Mango Care",dose:"наружно",times:["По необходимости"],rule:"по назначению"}
+];
+
+const startDate="2026-10-05";
+function todayISO(){return new Date().toLocaleDateString("en-CA")}
+function key(d,id,t){return "lt:"+d+":"+id+":"+t}
+function isChecked(k){return localStorage.getItem(k)==="1"}
+function toggle(d,id,t){const k=key(d,id,t);localStorage.setItem(k,isChecked(k)?"0":"1");render()}
+function setToday(){document.getElementById("date").value=todayISO();render()}
+function moveDay(n){let d=new Date(document.getElementById("date").value+"T12:00:00");d.setDate(d.getDate()+n);document.getElementById("date").value=d.toLocaleDateString("en-CA");render()}
+function dayDiff(d){return Math.round((new Date(d+"T12:00:00")-new Date(startDate+"T12:00:00"))/86400000)}
+function active(m,d){
+ if(m.id==="fenti"){let x=dayDiff(d);return x>=0&&x<=4&&x%2===0}
+ if(m.id==="fluco"){return d==="2026-10-05"||d==="2026-10-06"||d==="2026-10-07"}
+ return true
+}
+function timesFor(m,d){
+ if(m.id==="fluco") return ["Вечер"]
+ return m.times
+}
+function doseFor(m,d){
+ if(m.id==="fluco"&&d==="2026-10-05") return "150 mg · 2 капсулы"
+ if(m.id==="fluco"&&(d==="2026-10-06"||d==="2026-10-07")) return "150 mg · 1 капсула"
+ return m.dose
+}
+function render(){
+ const d=document.getElementById("date").value;
+ let total=0,done=0,html="";
+ const groups=[...new Set(meds.map(m=>m.group))];
+ groups.forEach(g=>{
+  const list=meds.filter(m=>m.group===g&&active(m,d));
+  if(!list.length)return;
+  html+=`<div class="group-title">${g}</div>`;
+  list.forEach(m=>{
+   const ts=timesFor(m,d);
+   total+=ts.length; done+=ts.filter(t=>isChecked(key(d,m.id,t))).length;
+   ts.forEach(t=>{
+    const c=isChecked(key(d,m.id,t));
+    html+=`<div class="card"><label class="row">
+      <input class="check" type="checkbox" ${c?"checked":""} onchange="toggle('${d}','${m.id}','${t}')">
+      <span><div class="name">${m.name}</div><div class="dose">${doseFor(m,d)}</div></span>
+    </label>
+    <div class="meta"><span class="pill">${t}</span>${m.note?m.note:""}${m.rule?`<br>${m.rule}`:""}</div>
+    </div>`;
+   });
+  });
+ });
+ if(!html)html='<div class="empty">На эту дату нет запланированных приёмов.</div>';
+ document.getElementById("app").innerHTML=html;
+ document.getElementById("summary").textContent=`${done} из ${total}`;
+ const p=total?Math.round(done/total*100):0;
+ document.getElementById("percent").textContent=p+"%";
+ document.getElementById("fill").style.width=p+"%";
+ document.getElementById("notes").value=localStorage.getItem("note:"+d)||"";
+ renderHistory();
+}
+function saveNotes(){localStorage.setItem("note:"+document.getElementById("date").value,document.getElementById("notes").value)}
+function stats(d){
+ let total=0,done=0;
+ meds.forEach(m=>{if(!active(m,d))return;timesFor(m,d).forEach(t=>{total++;if(isChecked(key(d,m.id,t)))done++})});
+ return [done,total];
+}
+function renderHistory(){
+ const base=new Date(document.getElementById("date").value+"T12:00:00"),h=document.getElementById("history");h.innerHTML="";
+ for(let i=6;i>=0;i--){let x=new Date(base);x.setDate(x.getDate()-i);let d=x.toLocaleDateString("en-CA"),s=stats(d);
+  h.innerHTML+=`<div class="day ${s[1]&&s[0]===s[1]?"complete":""}">${x.toLocaleDateString("ru-RU",{weekday:"short"})}<strong>${s[0]}/${s[1]}</strong></div>`;
+ }
+}
+document.getElementById("date").value=todayISO();
+render();
+</script>
+</body>
+</html>
